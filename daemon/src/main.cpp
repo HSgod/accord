@@ -41,7 +41,11 @@ using accord::core::LogLevel;
 struct Options
 {
     std::uint16_t port = kDefaultPort;
-    std::string audio_name = "voice";
+    // The payload manager starts a payload without arguments, so the default is
+    // what the console sees. It is the main port, the one the kit's own audio
+    // opens on this console; the chat port has not opened there yet.
+    // --audio=voice still selects it.
+    std::string audio_name = "main";
     std::string log_path = kLogPath;
 };
 
