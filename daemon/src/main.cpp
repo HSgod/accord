@@ -52,6 +52,9 @@ struct Options
     // own port uses. --audio=voice selects the chat-type variant, and
     // POST /variant?n=N walks the rest without a restart.
     std::size_t variant = 0;
+    // False when --audio named something this grid cannot honour, which is worth
+    // a line in the log: a payload manager's stderr goes nowhere.
+    bool audio_name_known = true;
     std::string log_path = kLogPath;
 };
 
@@ -66,9 +69,8 @@ std::uint16_t read_port(const char *text, std::uint16_t fallback) noexcept
 
 // Maps --audio=main|voice onto the variant that carries that type. An unknown
 // name keeps the variant the daemon already had.
-std::size_t read_variant(std::string_view name, std::size_t fallback) noexcept
+std::size_t read_variant(std::string_view name, std::size_t fallback, bool &known) noexcept
 {
-    bool known = false;
     const std::size_t index = audio_variant_from_name(name, known);
     return known ? index : fallback;
 }
@@ -89,9 +91,10 @@ Options read_options(int argc, char **argv) noexcept
         else if (argument.starts_with("--port="))
             options.port = read_port(std::string{argument.substr(7)}.c_str(), options.port);
         else if (argument == "--audio" && has_more)
-            options.variant = read_variant(argv[++index], options.variant);
+            options.variant = read_variant(argv[++index], options.variant, options.audio_name_known);
         else if (argument.starts_with("--audio="))
-            options.variant = read_variant(argument.substr(8), options.variant);
+            options.variant =
+                read_variant(argument.substr(8), options.variant, options.audio_name_known);
         else if (argument == "--log" && has_more)
             options.log_path = argv[++index];
         else if (argument.starts_with("--log="))
@@ -118,10 +121,10 @@ void play_tone(AudioOut &audio, std::atomic<bool> &running, std::atomic<std::uin
         const AudioVariant &variant = audio_variant_at(current);
         const bool opened = audio.open_variant(variant);
         logf(opened ? LogLevel::info : LogLevel::error,
-             "audio variant %zu (%s): type %d, volume call %s, open code 0x%08x, volume code "
-             "0x%08x",
-             current, std::string{variant.name}.c_str(), variant.type,
-             variant.set_volume ? "made" : "skipped", static_cast<unsigned>(audio.open_code()),
+             "audio variant %zu (%s): user 0x%08x, type %d, volume flags %d, open code 0x%08x, "
+             "volume code 0x%08x",
+             current, std::string{variant.name}.c_str(), variant.user, variant.type,
+             variant.volume_flags, static_cast<unsigned>(audio.open_code()),
              static_cast<unsigned>(audio.volume_code()));
         active.store(current, std::memory_order_relaxed);
     };
@@ -177,6 +180,12 @@ int main(int argc, char **argv)
     logf(LogLevel::info, "daemon up: pid %d, http port %u, audio variant %zu (%s)",
          static_cast<int>(::getpid()), static_cast<unsigned>(options.port), options.variant,
          std::string{audio_variant_at(options.variant).name}.c_str());
+
+    if (!options.audio_name_known)
+        logf(LogLevel::warn,
+             "audio: the name on the command line selects no variant of this grid, variant %zu "
+             "stays",
+             options.variant);
 
     // T6.0-3: first check that an exception raised inside the libraries comes back
     // to us at all, because the facade's catch (...) is worth nothing without it.
@@ -257,7 +266,7 @@ int main(int argc, char **argv)
             status.audio_variant_index = active.load(std::memory_order_relaxed);
             status.audio_variant = audio_variant_at(status.audio_variant_index).name;
             status.audio_type = audio_variant_at(status.audio_variant_index).type;
-            status.audio_volume_called = audio.volume_called();
+            status.audio_volume_flags = audio.volume_flags();
             status.audio_open_code = audio.open_code();
             status.audio_volume_code = audio.volume_code();
             status.last_error = audio_error.empty() ? server.last_error() : audio_error;
@@ -279,9 +288,11 @@ int main(int argc, char **argv)
                 const AudioVariant &variant = audio_variant_at(index);
                 if (index != 0)
                     body += ',';
-                body += "{\"index\":" + std::to_string(index) +
-                        ",\"type\":" + std::to_string(variant.type) + ",\"volume\":" +
-                        (variant.set_volume ? "true" : "false") + ",\"name\":\"" +
+                char user[16];
+                std::snprintf(user, sizeof(user), "0x%08x", variant.user);
+                body += "{\"index\":" + std::to_string(index) + ",\"user\":\"" + user +
+                        "\",\"type\":" + std::to_string(variant.type) + ",\"volume_flags\":" +
+                        std::to_string(variant.volume_flags) + ",\"name\":\"" +
                         std::string{variant.name} + "\"}";
             }
             body += "]}\n";

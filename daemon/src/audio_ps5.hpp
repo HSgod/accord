@@ -31,19 +31,18 @@ namespace accord::daemon
 // so the block size is a property of this module.
 inline constexpr unsigned kGrainFrames = 256;
 
-// The values the kit's own port opens with on this console and firmware: user
-// 0xff, index 0, grain 256, 48 kHz, s16 stereo. The daemon's first console run
-// asked with user 0x10000000 and the chat type and came back 0x80260011; with
-// these it opened. The type and the volume call are the sweep's two variables,
-// so they live in the variant.
-inline constexpr unsigned kSystemUser = 0xffu;
+// The values the kit's own port opens with on this console and firmware: index
+// 0, grain 256, 48 kHz, s16 stereo. The user and the type come from the variant,
+// because they are two of the grid's variables. The daemon's first console run
+// asked with user 0x10000000 and the chat type and came back 0x80260011; the
+// system user with type 0 opened.
 inline constexpr int kPortIndex = 0;
 inline constexpr unsigned kRate = 48000;
 inline constexpr unsigned kFormatS16Stereo = 1;
 
-// The volumes the research documents: 0x8000 is 0 dB. The meaning of the flags
-// word is not in it, so 0 stays as the value the first console run used.
-inline constexpr int kVolumeFlagAll = 0;
+// The volumes the research documents: 0x8000 is 0 dB. The flags word is the
+// variant's, because 0 came back 0x80260013 from this console and the grid is
+// what asks whether another value is accepted.
 inline constexpr int kVolumeFull = 0x8000;
 
 // sceAudioOutInit answers this when the library is already up, which the kit
@@ -65,12 +64,13 @@ class AudioOut
     // last one, and the audio thread overwrites it with every block.
     bool open_variant(const AudioVariant &variant) noexcept;
 
-    // The handle sceAudioOutOpen returned, the code of the volume call, and
-    // whether that call was made at all. The audio thread writes them once per
-    // open, the HTTP thread reads them for /status.
+    // The handle sceAudioOutOpen returned, the code of the volume call, and the
+    // flags that call was made with (kNoVolumeCall when the variant skips it as
+    // the kit does). The audio thread writes them once per open, the HTTP thread
+    // reads them for /status.
     int open_code() const noexcept;
     int volume_code() const noexcept;
-    bool volume_called() const noexcept;
+    int volume_flags() const noexcept;
 
     // Returns the code sceAudioOutOutput answered with. Only a negative one is a
     // failure: on this firmware the call answers 256, the grain it has just
@@ -92,7 +92,7 @@ class AudioOut
     int handle_ = -1;
     std::atomic<int> open_code_{0};
     std::atomic<int> volume_code_{0};
-    std::atomic<bool> volume_called_{false};
+    std::atomic<int> volume_flags_{kNoVolumeCall};
     AudioError error_;
 };
 } // namespace accord::daemon

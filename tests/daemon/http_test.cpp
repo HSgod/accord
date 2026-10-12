@@ -49,7 +49,7 @@ MICRO_TEST(status_json_lists_every_counter)
     status.audio_variant_index = 2;
     status.audio_variant = "type 1, no volume";
     status.audio_type = 1;
-    status.audio_volume_called = false;
+    status.audio_volume_flags = 3;
     status.audio_open_code = 0x20000000;
     status.audio_volume_code = 0;
     status.last_error = "";
@@ -59,7 +59,7 @@ MICRO_TEST(status_json_lists_every_counter)
                    std::string{"{\"uptime_seconds\":12,\"audio_frames\":3456,\"audio_open\":true,"
                                "\"tone_playing\":false,\"port\":8280,\"audio_variant_index\":2,"
                                "\"audio_variant\":\"type 1, no volume\",\"audio_type\":1,"
-                               "\"audio_volume_called\":false,\"audio_open_code\":\"0x20000000\","
+                               "\"audio_volume_flags\":3,\"audio_open_code\":\"0x20000000\","
                                "\"audio_volume_code\":\"0x00000000\",\"last_error\":\"\","
                                "\"unwind_selftest\":\"ok\"}\n"});
 }

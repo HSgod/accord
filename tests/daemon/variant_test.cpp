@@ -12,26 +12,58 @@
 
 using namespace accord::daemon;
 
-MICRO_TEST(variant_grid_pairs_a_type_with_and_without_the_volume_call)
+MICRO_TEST(variant_zero_is_the_configuration_this_console_accepted)
+{
+    // The system user, the type the kit opens, and the volume flags the console
+    // answered 0 to. The first console run had none of the three right.
+    const AudioVariant &first = audio_variant_at(0);
+    MICRO_CHECK_EQ(first.user, kUserSystem);
+    MICRO_CHECK_EQ(first.type, 0);
+    MICRO_CHECK_EQ(first.volume_flags, 3);
+    MICRO_CHECK(!first.name.empty());
+}
+
+MICRO_TEST(variant_grid_holds_both_user_ids_and_the_volume_flags_to_try)
 {
     MICRO_CHECK_EQ(kAudioVariantCount, std::size_t{6});
 
-    // Neighbours differ in the volume call alone, so a listener hears the same
-    // type twice in a row and the only new variable is the call itself.
-    for (std::size_t index = 0; index + 1 < kAudioVariantCount; index += 2)
+    bool system_seen = false;
+    bool account_seen = false;
+    bool volume_flags_three_seen = false;
+    bool volume_flags_zero_seen = false;
+    bool no_volume_call_seen = false;
+
+    for (std::size_t index = 0; index < kAudioVariantCount; ++index)
     {
-        MICRO_CHECK_EQ(audio_variant_at(index).type, audio_variant_at(index + 1).type);
-        MICRO_CHECK(audio_variant_at(index).set_volume);
-        MICRO_CHECK(!audio_variant_at(index + 1).set_volume);
+        const AudioVariant &variant = audio_variant_at(index);
+        if (variant.user == kUserSystem)
+            system_seen = true;
+        if (variant.user == kUserAccount)
+            account_seen = true;
+        if (variant.volume_flags == 3)
+            volume_flags_three_seen = true;
+        if (variant.volume_flags == 0)
+            volume_flags_zero_seen = true;
+        if (variant.volume_flags == kNoVolumeCall)
+            no_volume_call_seen = true;
     }
+
+    MICRO_CHECK(system_seen);
+    MICRO_CHECK(account_seen);
+    MICRO_CHECK(volume_flags_three_seen);
+    MICRO_CHECK(volume_flags_zero_seen); // the flags the console answered 0x80260013 to
+    MICRO_CHECK(no_volume_call_seen);    // the kit's path, kept as a control
 }
 
-MICRO_TEST(variant_zero_is_the_port_the_kit_opens)
+MICRO_TEST(variant_grid_keeps_the_type_the_console_opened)
 {
-    const AudioVariant &first = audio_variant_at(0);
-    MICRO_CHECK_EQ(first.type, 0);
-    MICRO_CHECK(first.set_volume);
-    MICRO_CHECK(!first.name.empty());
+    // Only the types 0 and 1 opened on this console; the chat type 2 came back
+    // 0x80260011 on every user id it was tried with, so no variant carries it.
+    for (std::size_t index = 0; index < kAudioVariantCount; ++index)
+    {
+        const int type = audio_variant_at(index).type;
+        MICRO_CHECK(type == 0 || type == 1);
+    }
 }
 
 MICRO_TEST(variant_names_are_distinct_and_free_of_quotes)
@@ -78,7 +110,7 @@ MICRO_TEST(variant_text_parses_only_a_number_inside_the_grid)
     MICRO_CHECK(!ok);
 }
 
-MICRO_TEST(variant_name_selects_the_type_the_command_line_asked_for)
+MICRO_TEST(variant_name_knows_main_and_refuses_voice)
 {
     bool known = false;
 
@@ -86,9 +118,10 @@ MICRO_TEST(variant_name_selects_the_type_the_command_line_asked_for)
     MICRO_CHECK(known);
     MICRO_CHECK_EQ(audio_variant_at(0).type, 0);
 
-    const std::size_t chat = audio_variant_from_name("voice", known);
-    MICRO_CHECK(known);
-    MICRO_CHECK_EQ(audio_variant_at(chat).type, 2);
+    // --audio=voice has nothing to select while the console refuses the chat
+    // type, and a name the daemon cannot honour is better reported than obeyed.
+    audio_variant_from_name("voice", known);
+    MICRO_CHECK(!known);
 
     audio_variant_from_name("nope", known);
     MICRO_CHECK(!known);

@@ -51,7 +51,7 @@ struct Status
     std::uint64_t audio_variant_index = 0; // into the grid of daemon/src/variant.hpp
     std::string_view audio_variant;        // the name of that variant
     int audio_type = 0;                    // the type the open call asked for
-    bool audio_volume_called = false;      // whether sceAudioOutSetVolume was called
+    int audio_volume_flags = -1;           // sceAudioOutSetVolume's flags, -1 when not called
     int audio_open_code = 0;               // the handle, or the open's error code
     int audio_volume_code = 0;             // the volume call's code, 0 when not called
     std::string_view last_error;           // empty when nothing has failed

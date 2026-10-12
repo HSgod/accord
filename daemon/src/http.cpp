@@ -137,8 +137,8 @@ std::string render_status_json(const Status &status)
     append_json_string(out, status.audio_variant);
     out += ",\"audio_type\":";
     out += std::to_string(status.audio_type);
-    out += ",\"audio_volume_called\":";
-    out += status.audio_volume_called ? "true" : "false";
+    out += ",\"audio_volume_flags\":";
+    out += std::to_string(status.audio_volume_flags);
     out += ",\"audio_open_code\":";
     append_json_code(out, status.audio_open_code);
     out += ",\"audio_volume_code\":";

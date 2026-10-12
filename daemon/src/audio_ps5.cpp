@@ -20,30 +20,30 @@ bool AudioOut::open_variant(const AudioVariant &variant) noexcept
     if (init != 0 && init != kAlreadyInitialized)
     {
         open_code_.store(init, std::memory_order_relaxed);
-        volume_called_.store(false, std::memory_order_relaxed);
+        volume_flags_.store(kNoVolumeCall, std::memory_order_relaxed);
         volume_code_.store(0, std::memory_order_relaxed);
         error_.remember(AudioCall::init, init);
         return false;
     }
 
-    handle_ = sceAudioOutOpen(kSystemUser, variant.type, kPortIndex, kGrainFrames, kRate,
+    handle_ = sceAudioOutOpen(variant.user, variant.type, kPortIndex, kGrainFrames, kRate,
                               kFormatS16Stereo);
     open_code_.store(handle_, std::memory_order_relaxed);
     if (handle_ < 0)
     {
-        volume_called_.store(false, std::memory_order_relaxed);
+        volume_flags_.store(kNoVolumeCall, std::memory_order_relaxed);
         volume_code_.store(0, std::memory_order_relaxed);
         error_.remember(AudioCall::open, handle_);
         handle_ = -1;
         return false;
     }
 
-    volume_called_.store(variant.set_volume, std::memory_order_relaxed);
+    volume_flags_.store(variant.volume_flags, std::memory_order_relaxed);
     volume_code_.store(0, std::memory_order_relaxed);
-    if (variant.set_volume)
+    if (variant.volume_flags != kNoVolumeCall)
     {
         const int volumes[2] = {kVolumeFull, kVolumeFull};
-        const int code = sceAudioOutSetVolume(handle_, kVolumeFlagAll, volumes);
+        const int code = sceAudioOutSetVolume(handle_, variant.volume_flags, volumes);
         volume_code_.store(code, std::memory_order_relaxed);
         if (code != 0)
         {
@@ -64,9 +64,9 @@ int AudioOut::volume_code() const noexcept
     return volume_code_.load(std::memory_order_relaxed);
 }
 
-bool AudioOut::volume_called() const noexcept
+int AudioOut::volume_flags() const noexcept
 {
-    return volume_called_.load(std::memory_order_relaxed);
+    return volume_flags_.load(std::memory_order_relaxed);
 }
 
 int AudioOut::submit(std::span<const std::int16_t> frames) noexcept
