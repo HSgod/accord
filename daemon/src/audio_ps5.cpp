@@ -7,88 +7,77 @@
 
 namespace accord::daemon
 {
-namespace
-{
-// Taken from the kit's own audio port (ui/kit/platform/ps5/audio_out.cpp), which
-// is proven to open on this console and firmware: user 0xff, type 0 (main),
-// index 0, grain 256, 48 kHz, s16 stereo. The daemon's first attempt on the
-// console used user 0x10000000 with the chat type and came back 0x80260011, so
-// the values below are the ones that have a working counterpart on this exact
-// machine. The two variables (user id, port type) differed at once there, so
-// that failure does not yet say which of them the console rejected.
-constexpr unsigned kSystemUser = 0xffu;
-constexpr int kPortIndex = 0;
-// The chat port of the documented enumeration, kept for --audio=voice. It is the
-// one this console has not opened yet, so it stays marked unverified here.
-constexpr int kTypeVoice = 2;
-constexpr int kTypeMain = 0;
-constexpr unsigned kRate = 48000;
-constexpr unsigned kFormatS16Stereo = 1;
-constexpr int kVolumeFlagAll = 0;
-constexpr int kVolumeFull = 0x8000;
-} // namespace
-
-std::string_view name_of(AudioPort port) noexcept
-{
-    return port == AudioPort::voice ? "voice" : "main";
-}
-
-AudioPort audio_port_from_name(std::string_view name, bool &known) noexcept
-{
-    known = true;
-    if (name == "voice")
-        return AudioPort::voice;
-    if (name == "main")
-        return AudioPort::main;
-    known = false;
-    return AudioPort::voice;
-}
-
 AudioOut::~AudioOut()
 {
     close();
 }
 
-bool AudioOut::open(AudioPort port) noexcept
+bool AudioOut::open_variant(const AudioVariant &variant) noexcept
 {
-    if (handle_ >= 0)
-        return true;
+    close();
 
-    int code = sceAudioOutInit();
-    if (code != 0)
+    const int init = sceAudioOutInit();
+    if (init != 0 && init != kAlreadyInitialized)
     {
-        error_.remember(AudioCall::init, code);
+        open_code_.store(init, std::memory_order_relaxed);
+        volume_called_.store(false, std::memory_order_relaxed);
+        volume_code_.store(0, std::memory_order_relaxed);
+        error_.remember(AudioCall::init, init);
         return false;
     }
 
-    const int type = port == AudioPort::voice ? kTypeVoice : kTypeMain;
-    handle_ = sceAudioOutOpen(kSystemUser, type, kPortIndex, kGrainFrames, kRate,
+    handle_ = sceAudioOutOpen(kSystemUser, variant.type, kPortIndex, kGrainFrames, kRate,
                               kFormatS16Stereo);
+    open_code_.store(handle_, std::memory_order_relaxed);
     if (handle_ < 0)
     {
+        volume_called_.store(false, std::memory_order_relaxed);
+        volume_code_.store(0, std::memory_order_relaxed);
         error_.remember(AudioCall::open, handle_);
         handle_ = -1;
         return false;
     }
 
-    const int volumes[2] = {kVolumeFull, kVolumeFull};
-    code = sceAudioOutSetVolume(handle_, kVolumeFlagAll, volumes);
-    if (code != 0)
+    volume_called_.store(variant.set_volume, std::memory_order_relaxed);
+    volume_code_.store(0, std::memory_order_relaxed);
+    if (variant.set_volume)
     {
-        // Not fatal: the port stays open at whatever volume it came up with.
-        error_.remember(AudioCall::set_volume, code);
+        const int volumes[2] = {kVolumeFull, kVolumeFull};
+        const int code = sceAudioOutSetVolume(handle_, kVolumeFlagAll, volumes);
+        volume_code_.store(code, std::memory_order_relaxed);
+        if (code != 0)
+        {
+            // Not fatal: the port stays open at whatever volume it came up with.
+            error_.remember(AudioCall::set_volume, code);
+        }
     }
     return true;
 }
 
-void AudioOut::submit(std::span<const std::int16_t> frames) noexcept
+int AudioOut::open_code() const noexcept
+{
+    return open_code_.load(std::memory_order_relaxed);
+}
+
+int AudioOut::volume_code() const noexcept
+{
+    return volume_code_.load(std::memory_order_relaxed);
+}
+
+bool AudioOut::volume_called() const noexcept
+{
+    return volume_called_.load(std::memory_order_relaxed);
+}
+
+int AudioOut::submit(std::span<const std::int16_t> frames) noexcept
 {
     if (handle_ < 0)
-        return;
+        return 0;
 
     const int code = sceAudioOutOutput(handle_, frames.data());
-    if (code != 0)
+    if (code < 0)
         error_.remember(AudioCall::output, code);
+    return code;
 }
 
 void AudioOut::drain() noexcept

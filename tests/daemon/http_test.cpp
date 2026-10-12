@@ -46,14 +46,45 @@ MICRO_TEST(status_json_lists_every_counter)
     status.audio_open = true;
     status.tone_playing = false;
     status.port = 8280;
-    status.audio_port = "voice";
+    status.audio_variant_index = 2;
+    status.audio_variant = "type 1, no volume";
+    status.audio_type = 1;
+    status.audio_volume_called = false;
+    status.audio_open_code = 0x20000000;
+    status.audio_volume_code = 0;
     status.last_error = "";
     status.unwind_selftest = "ok";
 
     MICRO_CHECK_EQ(render_status_json(status),
                    std::string{"{\"uptime_seconds\":12,\"audio_frames\":3456,\"audio_open\":true,"
-                               "\"tone_playing\":false,\"port\":8280,\"audio_port\":\"voice\","
-                               "\"last_error\":\"\",\"unwind_selftest\":\"ok\"}\n"});
+                               "\"tone_playing\":false,\"port\":8280,\"audio_variant_index\":2,"
+                               "\"audio_variant\":\"type 1, no volume\",\"audio_type\":1,"
+                               "\"audio_volume_called\":false,\"audio_open_code\":\"0x20000000\","
+                               "\"audio_volume_code\":\"0x00000000\",\"last_error\":\"\","
+                               "\"unwind_selftest\":\"ok\"}\n"});
+}
+
+MICRO_TEST(status_json_prints_the_codes_the_way_the_console_does)
+{
+    Status status;
+    status.audio_open_code = static_cast<int>(0x80260011u);
+    status.audio_volume_code = -1;
+
+    const std::string json = render_status_json(status);
+    MICRO_CHECK(json.find("\"audio_open_code\":\"0x80260011\"") != std::string::npos);
+    MICRO_CHECK(json.find("\"audio_volume_code\":\"0xffffffff\"") != std::string::npos);
+}
+
+MICRO_TEST(query_value_reads_the_key_it_was_asked_for)
+{
+    MICRO_CHECK_EQ(std::string{query_value("n=2", "n")}, std::string{"2"});
+    MICRO_CHECK_EQ(std::string{query_value("x=1&n=5", "n")}, std::string{"5"});
+    MICRO_CHECK_EQ(std::string{query_value("n=3&x=1", "n")}, std::string{"3"});
+    MICRO_CHECK_EQ(std::string{query_value("n=", "n")}, std::string{});
+    MICRO_CHECK_EQ(std::string{query_value("", "n")}, std::string{});
+    MICRO_CHECK_EQ(std::string{query_value("m=2", "n")}, std::string{});
+    // A key that merely ends with the name is not the name.
+    MICRO_CHECK_EQ(std::string{query_value("on=2", "n")}, std::string{});
 }
 
 MICRO_TEST(status_json_carries_the_unwind_selftest_verdict)

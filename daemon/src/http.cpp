@@ -50,7 +50,36 @@ void append_json_string(std::string &out, std::string_view text)
     }
     out.push_back('"');
 }
+
+// The console answers its audio calls in hex, so the status keeps that form
+// instead of turning 0x80260011 into a decimal nobody recognises.
+void append_json_code(std::string &out, int code)
+{
+    char printed[16];
+    std::snprintf(printed, sizeof(printed), "\"0x%08x\"", static_cast<unsigned>(code));
+    out += printed;
+}
 } // namespace
+
+std::string_view query_value(std::string_view query, std::string_view key) noexcept
+{
+    std::size_t at = 0;
+    while (at < query.size())
+    {
+        const std::size_t end = query.find('&', at);
+        const std::string_view pair =
+            query.substr(at, end == std::string_view::npos ? std::string_view::npos : end - at);
+
+        const std::size_t equals = pair.find('=');
+        if (equals != std::string_view::npos && pair.substr(0, equals) == key)
+            return pair.substr(equals + 1);
+
+        if (end == std::string_view::npos)
+            break;
+        at = end + 1;
+    }
+    return {};
+}
 
 RequestLine parse_request_line(std::string_view line)
 {
@@ -102,8 +131,18 @@ std::string render_status_json(const Status &status)
     out += status.tone_playing ? "true" : "false";
     out += ",\"port\":";
     out += std::to_string(status.port);
-    out += ",\"audio_port\":";
-    append_json_string(out, status.audio_port);
+    out += ",\"audio_variant_index\":";
+    out += std::to_string(status.audio_variant_index);
+    out += ",\"audio_variant\":";
+    append_json_string(out, status.audio_variant);
+    out += ",\"audio_type\":";
+    out += std::to_string(status.audio_type);
+    out += ",\"audio_volume_called\":";
+    out += status.audio_volume_called ? "true" : "false";
+    out += ",\"audio_open_code\":";
+    append_json_code(out, status.audio_open_code);
+    out += ",\"audio_volume_code\":";
+    append_json_code(out, status.audio_volume_code);
     out += ",\"last_error\":";
     append_json_string(out, status.last_error);
     out += ",\"unwind_selftest\":";
