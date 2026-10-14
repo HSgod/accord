@@ -448,12 +448,31 @@ HttpStatus read_chunked(Reader &reader, std::string &out)
 }
 } // namespace
 
-std::string render_request(const HttpRequest &request)
+namespace
 {
+// One header is one line, so its name and its value may not carry a line break or
+// a NUL. The four-argument find_first_of is deliberate: it searches the NUL too,
+// where a string literal would stop at it.
+bool is_one_line(const std::string &text)
+{
+    return text.find_first_of("\r\n\0", 0, 3) == std::string::npos;
+}
+} // namespace
+
+HttpStatus render_request(const HttpRequest &request, std::string &out)
+{
+    out.clear();
+    if (!is_one_line(request.host))
+        return HttpStatus::bad_request;
+    for (const Header &header : request.headers)
+    {
+        if (!is_one_line(header.name) || !is_one_line(header.value))
+            return HttpStatus::bad_request;
+    }
+
     const std::string method = request.method.empty() ? std::string{"GET"} : request.method;
     const std::string target = request.target.empty() ? std::string{"/"} : request.target;
 
-    std::string out;
     out += method;
     out += ' ';
     out += target;
@@ -477,7 +496,7 @@ std::string render_request(const HttpRequest &request)
     }
     out += "\r\n";
     out += request.body;
-    return out;
+    return HttpStatus::ok;
 }
 
 HttpRequest HttpRequest::get(std::string host, std::string target)
@@ -531,7 +550,10 @@ HttpStatus HttpClient::send(Stream &stream, const HttpRequest &request, int time
         return fail(HttpStatus::bad_request, "the request has no method or no host");
 
     const std::int64_t deadline = now_ms() + (timeout_ms > 0 ? timeout_ms : 0);
-    const std::string bytes = render_request(request);
+    std::string bytes;
+    const HttpStatus rendered = render_request(request, bytes);
+    if (rendered != HttpStatus::ok)
+        return fail(rendered, "a header name or its value carries a line break or a NUL");
     const StreamResult wrote = stream.write(reinterpret_cast<const std::uint8_t *>(bytes.data()),
                                             bytes.size(), remaining_ms(deadline));
     if (wrote.status == StreamStatus::timeout)

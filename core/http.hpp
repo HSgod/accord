@@ -72,7 +72,6 @@ struct HttpRequest
 // The request exactly as it goes on the wire: request line, Host, `Connection:
 // close`, the caller's headers, the body's headers when there is a body, the
 // blank line, the body.
-std::string render_request(const HttpRequest &request);
 
 struct HttpResponse
 {
@@ -100,6 +99,13 @@ enum class HttpStatus
     too_large,       // a header block or a body passed its limit
     transport_error, // the stream failed, or swallowed a short write
 };
+
+// Renders the request into `out` and says whether it is one this client will put
+// on the wire. A header name or value carrying CR, LF or NUL is refused: a header
+// is a line, and text that can end its own line can start another one, which is
+// how a request grows a second request inside it. Nothing is rendered in that
+// case and the answer is bad_request.
+HttpStatus render_request(const HttpRequest &request, std::string &out);
 
 class HttpClient
 {

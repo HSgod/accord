@@ -21,6 +21,7 @@
 #include "core/http.hpp"
 #include "tests/support/memory_stream.hpp"
 
+using accord::core::Header;
 using accord::core::HttpClient;
 using accord::core::HttpRequest;
 using accord::core::HttpResponse;
@@ -361,17 +362,20 @@ MICRO_TEST(a_write_that_fails_is_a_transport_error)
 
 MICRO_TEST(render_request_writes_a_get_and_a_post)
 {
+    std::string rendered;
+
     const HttpRequest get = HttpRequest::get("discord.com", "/api/v10/gateway");
-    MICRO_CHECK_EQ(accord::core::render_request(get),
-                   std::string{"GET /api/v10/gateway HTTP/1.1\r\n"
-                               "Host: discord.com\r\n"
-                               "Connection: close\r\n"
-                               "\r\n"});
+    MICRO_CHECK_EQ(name_of(accord::core::render_request(get, rendered)), std::string{"ok"});
+    MICRO_CHECK_EQ(rendered, std::string{"GET /api/v10/gateway HTTP/1.1\r\n"
+                                         "Host: discord.com\r\n"
+                                         "Connection: close\r\n"
+                                         "\r\n"});
 
     const std::string body = "grant_type=authorization_code";
     const HttpRequest post = HttpRequest::post("discord.com", "/api/v10/oauth2/token", body,
                                                "application/x-www-form-urlencoded");
-    MICRO_CHECK_EQ(accord::core::render_request(post),
+    MICRO_CHECK_EQ(name_of(accord::core::render_request(post, rendered)), std::string{"ok"});
+    MICRO_CHECK_EQ(rendered,
                    std::string{"POST /api/v10/oauth2/token HTTP/1.1\r\n"
                                "Host: discord.com\r\n"
                                "Connection: close\r\n"
@@ -382,7 +386,47 @@ MICRO_TEST(render_request_writes_a_get_and_a_post)
     // A POST with nothing to say still says how long nothing is; a GET does not
     // mention a body it never has.
     const HttpRequest empty_post = HttpRequest::post("discord.com", "/x", "", "");
-    MICRO_CHECK(accord::core::render_request(empty_post).find("Content-Length: 0\r\n") !=
-                std::string::npos);
-    MICRO_CHECK(accord::core::render_request(empty_post).find("Content-Type") == std::string::npos);
+    MICRO_CHECK_EQ(name_of(accord::core::render_request(empty_post, rendered)), std::string{"ok"});
+    MICRO_CHECK(rendered.find("Content-Length: 0\r\n") != std::string::npos);
+    MICRO_CHECK(rendered.find("Content-Type") == std::string::npos);
+}
+
+MICRO_TEST(a_header_that_ends_its_own_line_is_refused_before_anything_is_written)
+{
+    // A header is one line. A value that can end its own line can start another
+    // one, which is how a request grows a second request inside it.
+    HttpRequest request = HttpRequest::get("discord.com", "/api/v10/gateway");
+    request.headers.push_back(Header{"X-Test", "one\r\nInjected: yes"});
+
+    std::string rendered;
+    MICRO_CHECK_EQ(name_of(accord::core::render_request(request, rendered)),
+                   std::string{"bad_request"});
+    MICRO_CHECK(rendered.empty());
+
+    MemoryStream stream;
+    HttpResponse answer;
+    HttpClient http;
+    MICRO_CHECK_EQ(name_of(http.send(stream, request, kWaitMs, answer)),
+                   std::string{"bad_request"});
+    MICRO_CHECK(stream.written().empty());
+}
+
+MICRO_TEST(a_header_name_with_a_line_break_and_a_nul_are_refused_too)
+{
+    HttpRequest named = HttpRequest::get("discord.com", "/api/v10/gateway");
+    named.headers.push_back(Header{"X-Test\nX-Other", "value"});
+
+    std::string rendered;
+    MICRO_CHECK_EQ(name_of(accord::core::render_request(named, rendered)),
+                   std::string{"bad_request"});
+
+    HttpRequest with_nul = HttpRequest::get("discord.com", "/api/v10/gateway");
+    with_nul.headers.push_back(Header{"X-Test", std::string{"one\0two", 7}});
+
+    MemoryStream stream;
+    HttpResponse answer;
+    HttpClient http;
+    MICRO_CHECK_EQ(name_of(http.send(stream, with_nul, kWaitMs, answer)),
+                   std::string{"bad_request"});
+    MICRO_CHECK(stream.written().empty());
 }
