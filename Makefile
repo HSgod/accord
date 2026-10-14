@@ -185,7 +185,7 @@ APP_VARS := APP_SOURCE_DIR=.local/accord/src \
             'APP_WRAP_SYMBOLS=sceSystemServiceHideSplashScreen malloc calloc realloc free posix_memalign malloc_usable_size' \
             APP_ASSETS=.local/accord/assets
 
-.PHONY: all app stage opengl ffpkg test ws-soak gateway-hello host-snapshots payload dave-deps \
+.PHONY: all app stage opengl ffpkg test ws-soak gateway-hello host-snapshots payload probe dave-deps \
         dave-host-test clean distclean
 
 all: app
@@ -260,6 +260,14 @@ host-snapshots:
 payload: $(JSON_LIB)/yyjson.c $(ZLIB_LIB)/zlib.h $(CACERT_LIB)/cacert.pem
 	@printf '%s\n' '==> [payload] background daemon (elf) in the builder container'
 	@scripts/dev.sh bash tools/build-daemon-payload.sh
+
+# T2.3c path A: the probe payload. A test tool, not product code -- it calls the
+# one chat function the official Discord client is known to use, plays the siren
+# of T2.3a and logs every return code to klog 3232. Its own script, no JSON, no
+# zlib, no TLS, no DAVE, and it changes nothing in daemon/ or platform/.
+probe:
+	@printf '%s\n' '==> [probe] T2.3c path-A probe (elf) in the builder container'
+	@scripts/dev.sh bash tools/build-audio-probe.sh
 
 # DAVE (T6.0-2). The dependency chain is fetched and cross-built into build/dave,
 # which is gitignored, so this runs once per checkout and `make payload` needs it.
