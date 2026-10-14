@@ -38,6 +38,16 @@ class AudioOut
         return errors_.load(std::memory_order_relaxed);
     }
 
+#ifdef ACCORD_TITLE_TONE
+    // T2.3d-2 step 0: the tone build reads the state of the very port this
+    // object opened, so a hardware run can tell whether the console routes a
+    // title's port to an output. Absent from ordinary builds, like the tone.
+    int native_handle() const
+    {
+        return handle_;
+    }
+#endif
+
   private:
     static void *thread_main(void *self);
     void run();

@@ -41,6 +41,10 @@
 #include "ui/kit/audio/mixer.hpp"
 #include "ui/kit/platform/ps5/audio_out.hpp"
 #include "ui/title_tone.hpp"
+
+// T2.3d-2 step 0: the SDK publishes names, not prototypes, so the one call the
+// tone build adds is declared here, the way the kit declares its own.
+extern "C" int sceAudioOutGetPortState(int handle, void *state);
 #endif
 
 #include <GL/glcorearb.h>
@@ -283,6 +287,38 @@ int main()
     // port, from a process that has an application id. Everything else about
     // this build is the ordinary title, so what the console test compares is
     // whose process opened the port and nothing else.
+    //
+    // T2.3d-2 step 0: this build also reads the state of that very port and
+    // writes it to klog. The payload's port reads as "nothing carries it", and
+    // the criterion `outputs != 0` needs a known-good reference from a process
+    // the console demonstrably plays.
+    struct TitlePortState
+    {
+        std::uint16_t output;
+        std::uint8_t channel;
+        std::uint8_t reserved;
+        std::int16_t volume;
+        std::uint16_t reroute_counter;
+        std::uint64_t flag;
+        std::uint64_t reserved64[2];
+    };
+    static_assert(sizeof(TitlePortState) == 32, "the port state is 32 bytes");
+
+    const auto log_port_state = [](const char *when, int handle, double seconds)
+    {
+        if (handle < 0)
+        {
+            hui::sys::log("[accord] title port state (%s, t=%.1fs): no port", when, seconds);
+            return;
+        }
+        TitlePortState state{};
+        const int code = sceAudioOutGetPortState(handle, &state);
+        hui::sys::log("[accord] title port state (%s, t=%.1fs) = 0x%08x: outputs=0x%04x "
+                      "channels=%u volume=%d reroute=%u",
+                      when, seconds, static_cast<unsigned>(code), state.output, state.channel,
+                      state.volume, state.reroute_counter);
+    };
+
     hui::audio::Mixer title_mixer;
     hui::ps5::AudioOut title_audio;
     double tone_posted_at = -accord::ui::kTitleTonePeriodSeconds;
@@ -290,6 +326,12 @@ int main()
         log(LogLevel::info, "title tone: on, a 400 Hz to 2000 Hz sweep every 1.4 s");
     else
         log(LogLevel::error, "title tone: the audio port did not open");
+    log_port_state("before the tone", title_audio.native_handle(), 0.0);
+    std::int64_t next_port_state_log = start + 1000000; // the first second in
+    int port_state_logs = 0;
+    // T2.3d-2 step 3: one line a second, so a run that hands the foreground to a
+    // game can tell whether this process is still running its loop at all.
+    std::int64_t next_heartbeat = start + 1000000;
 #endif
 
     for (;;)
@@ -317,6 +359,26 @@ int main()
             params.bus = hui::audio::Bus::sfx;
             title_mixer.play_tone(sweep, params);
             tone_posted_at = tone_seconds;
+        }
+
+        // T2.3d-2 step 0: a handful of reads early on, when the interesting
+        // question is whether the console carries the port while the tone
+        // plays, then rarely, so the klog stays readable.
+        if (now >= next_port_state_log)
+        {
+            log_port_state("while playing", title_audio.native_handle(),
+                           static_cast<double>(now - start) / 1e6);
+            ++port_state_logs;
+            next_port_state_log = now + (port_state_logs < 5 ? 4000000 : 30000000);
+        }
+
+        // T2.3d-2 step 3: the heartbeat is what survives into the log after the
+        // foreground is handed over, so it is kept to one short line a second.
+        if (now >= next_heartbeat)
+        {
+            hui::sys::log("[accord] title heartbeat t=%.1fs",
+                          static_cast<double>(now - start) / 1e6);
+            next_heartbeat = now + 1000000;
         }
 #endif
 
