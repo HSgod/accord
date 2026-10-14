@@ -65,6 +65,7 @@ extern "C" int sceAudioOut2UserDestroy(std::size_t handle);
 
 extern "C" int sceUserServiceInitialize(const void *params);
 extern "C" int sceUserServiceGetInitialUser(int *user);
+extern "C" int sceUserServiceGetForegroundUser(int *user);
 
 namespace
 {
@@ -206,8 +207,10 @@ void log_ao2_state(const char *type_name, const char *when, std::uint64_t port)
                 state.volume, state.flags);
 }
 
-// A user that has a pad: the kit's pad code makes this call, and the SDK
-// publishes it, so the number it returns is the one the speaker port wants.
+// A user that has a pad. The kit's pad code asks for the initial user, which is
+// answered inside a title; a payload may be told there is none, so the
+// foreground user is asked as well. Both calls are published by the SDK, and
+// whichever answers with a user is the one the speaker port wants.
 int pad_user()
 {
     const int init = sceUserServiceInitialize(nullptr);
@@ -215,10 +218,17 @@ int pad_user()
     if (init != 0)
         return -1;
 
-    int user = -1;
-    note("sceUserServiceGetInitialUser", sceUserServiceGetInitialUser(&user));
-    klog_printf("[probe] uzytkownik z padem = 0x%08x\n", static_cast<unsigned>(user));
-    return user;
+    int initial = -1;
+    note("sceUserServiceGetInitialUser", sceUserServiceGetInitialUser(&initial));
+
+    int foreground = -1;
+    note("sceUserServiceGetForegroundUser", sceUserServiceGetForegroundUser(&foreground));
+
+    const int user = initial >= 0 ? initial : foreground;
+    klog_printf("[probe] uzytkownik z padem: initial=0x%08x foreground=0x%08x -> 0x%08x\n",
+                static_cast<unsigned>(initial), static_cast<unsigned>(foreground),
+                static_cast<unsigned>(user));
+    return user >= 0 ? user : -1;
 }
 
 void legacy_type(int user_with_pad, const LegacyType &candidate)
@@ -356,13 +366,19 @@ int main()
 
     std::size_t memory = 0;
     note("sceAudioOut2ContextQueryMemory", sceAudioOut2ContextQueryMemory(&params, &memory));
+    klog_printf("[probe] AudioOut2: pamiec kontekstu = %zu B\n", memory);
 
+    // The port legs are skipped only when there is no context to hold them: a
+    // failed Initialize does not by itself mean the ports cannot be made, and
+    // this is the only chance a session gives to find out.
     std::uint64_t context = 0;
     if (memory != 0 && memory <= (16u << 20))
     {
         std::vector<std::uint8_t> buffer(memory, 0);
         note("sceAudioOut2ContextCreate",
              sceAudioOut2ContextCreate(&params, buffer.data(), buffer.size(), &context));
+        klog_printf("[probe] AudioOut2: context = 0x%llx\n",
+                    static_cast<unsigned long long>(context));
     }
 
     if (context != 0)
@@ -373,7 +389,9 @@ int main()
     }
     else
     {
-        klog_printf("[probe] brak kontekstu AudioOut2, typy 3 i 4 pominiete\n");
+        klog_printf("[probe] brak kontekstu AudioOut2 (pamiec=%zu, context=0x%llx), typy 3 i 4 "
+                    "pominiete\n",
+                    memory, static_cast<unsigned long long>(context));
     }
 
     klog_printf("[probe] koniec\n");
