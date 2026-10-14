@@ -163,21 +163,20 @@ STAGING     := $(BOILERPLATE)/.local/accord
 # its own root, which is the parent of both our tree and the SDK.
 OPENGLS := third_party/ps5-opengl
 
-# T2.3b: the one exception to "the title opens no audio ports". With TITLE_TONE=1
-# the title plays a test tone from the control run, which is what tells an
-# application's audio from a payload's; off by default, so an ordinary build
-# carries none of it. `make ffpkg TITLE_TONE=1` is the whole recipe.
+# The one exception to "the title opens no audio ports": with TITLE_TONE=1 the
+# title plays a test tone from a control run, which is what tells an application's
+# audio from a payload's. Off by default, so an ordinary build carries none of it.
+# `make ffpkg TITLE_TONE=1` is the whole recipe.
 TITLE_TONE ?= 0
 APP_DEFS   := GL_GLEXT_PROTOTYPES=1
 ifeq ($(TITLE_TONE),1)
 APP_DEFS += ACCORD_TITLE_TONE=1
 endif
 
-# T2.2b: the title-to-daemon link probe. The title is the daemon's front end in
-# the fallback variant of T2.3c, which sends PCM and a heartbeat over 127.0.0.1,
-# so a build with LINK_TEST=1 asks the daemon's /status every few seconds, shows
-# the answer on screen and writes it to klog. Off by default, so an ordinary
-# build carries none of it.
+# The title-to-daemon link probe: the title is the daemon's front end, and the
+# link carries PCM and a heartbeat over 127.0.0.1, so a build with LINK_TEST=1
+# asks the daemon's /status every few seconds, shows the answer on screen and
+# writes it to klog. Off by default, so an ordinary build carries none of it.
 LINK_TEST ?= 0
 ifeq ($(LINK_TEST),1)
 APP_DEFS += ACCORD_LINK_TEST=1
@@ -300,15 +299,16 @@ payload: $(JSON_LIB)/yyjson.c $(ZLIB_LIB)/zlib.h $(CACERT_LIB)/cacert.pem
 	@printf '%s\n' '==> [payload] background daemon (elf) in the builder container'
 	@scripts/dev.sh bash tools/build-daemon-payload.sh
 
-# T2.3c path A: the probe payload. A test tool, not product code -- it calls the
-# one chat function the official Discord client is known to use, plays the siren
-# of T2.3a and logs every return code to klog 3232. Its own script, no JSON, no
-# zlib, no TLS, no DAVE, and it changes nothing in daemon/ or platform/.
+# The audio probe payload: a test tool, not product code. It opens the output
+# port types one at a time, plays the siren and logs every return code and port
+# state to klog 3232, which is how "can a payload be heard during a game" is
+# answered. Its own script: no JSON, no zlib, no TLS, no DAVE, and it changes
+# nothing in daemon/ or platform/.
 probe:
-	@printf '%s\n' '==> [probe] T2.3c path-A probe (elf) in the builder container'
+	@printf '%s\n' '==> [probe] audio probe (elf) in the builder container'
 	@scripts/dev.sh bash tools/build-audio-probe.sh
 
-# DAVE (T6.0-2). The dependency chain is fetched and cross-built into build/dave,
+# DAVE. The dependency chain is fetched and cross-built into build/dave,
 # which is gitignored, so this runs once per checkout and `make payload` needs it.
 # Each step is a separate container: the sources and the install prefix live in
 # the mounted tree, not in the container.
