@@ -16,6 +16,7 @@
 #include "ui/kit/gfx/renderer.hpp"
 #include "ui/kit/ui/fonts.hpp"
 #include "ui/kit/ui/theme.hpp"
+#include "ui/frame.hpp"
 #include "ui/screens.hpp"
 
 #include <EGL/egl.h>
@@ -173,14 +174,20 @@ int main(int argc, char **argv)
     // Two passes: the first fills the renderer's glass texture, so a theme whose
     // surfaces are frosted has something to blur on the pass that is written.
     const std::span<const accord::ui::Screen> all = accord::ui::screens();
+
+    // One list for the whole run, declared where the frame loop can see it, the
+    // way the console title declares its own: the renderer keeps the pointer
+    // until present(), so the two callers must exercise the same lifetime. A
+    // local inside the loop below is what the console once had, and it looked
+    // like a screen with nothing on it but the backdrop.
+    hui::gfx::DrawList list;
     for (int pass = 0; pass < 2; ++pass)
     {
         for (const accord::ui::Screen &screen : all)
         {
-            hui::gfx::DrawList list;
             const accord::ui::ScreenContext context{fonts, *theme,
                                                          renderer.glass_texture(), 4.0f};
-            screen.draw(list, context);
+            accord::ui::build_frame(list, screen, context);
 
             hui::gfx::BackdropSpec spec = theme->backdrop;
             spec.time = 4.0f;
@@ -189,10 +196,7 @@ int main(int argc, char **argv)
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
 
-            renderer.begin();
-            renderer.backdrop(spec);
-            renderer.draw(list);
-            renderer.glass();
+            accord::ui::submit_frame(renderer, list, spec);
             renderer.present(framebuffer, kWidth, kHeight);
 
             if (pass == 0)

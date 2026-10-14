@@ -33,6 +33,7 @@
 #include "ui/kit/ui/fonts.hpp"
 #include "ui/kit/ui/theme.hpp"
 #include "ui/nav.hpp"
+#include "ui/frame.hpp"
 #include "ui/screens.hpp"
 
 // T2.3b: the control run. Only a build with TITLE_TONE=1 carries the tone and
@@ -215,11 +216,10 @@ accord::ui::DaemonLinkResult g_link_result;
 // disappears behind the backdrop, which is the one layer the renderer copies.
 void draw_frame(Shell &shell, hui::gfx::DrawList &list, float seconds)
 {
-    list.clear();
     const accord::ui::Screen &screen = shell.screens[shell.nav.screen];
     const accord::ui::ScreenContext context{shell.fonts, shell.theme,
                                             shell.renderer.glass_texture(), seconds};
-    screen.draw(list, context);
+    accord::ui::build_frame(list, screen, context);
 
     if (shell.nav.typing)
     {
@@ -247,10 +247,7 @@ void draw_frame(Shell &shell, hui::gfx::DrawList &list, float seconds)
 
     hui::gfx::BackdropSpec backdrop = shell.theme.backdrop;
     backdrop.time = seconds;
-    shell.renderer.begin();
-    shell.renderer.backdrop(backdrop);
-    shell.renderer.draw(list);
-    shell.renderer.glass();
+    accord::ui::submit_frame(shell.renderer, list, backdrop);
 }
 } // namespace
 

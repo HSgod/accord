@@ -195,8 +195,8 @@ APP_VARS := APP_SOURCE_DIR=.local/accord/src \
             'APP_WRAP_SYMBOLS=sceSystemServiceHideSplashScreen malloc calloc realloc free posix_memalign malloc_usable_size' \
             APP_ASSETS=.local/accord/assets
 
-.PHONY: all app stage opengl ffpkg test ws-soak gateway-hello host-snapshots payload probe dave-deps \
-        dave-host-test clean distclean hooks
+.PHONY: all app stage opengl ffpkg test ws-soak gateway-hello host-snapshots snapshot-sources \
+        snapshot-link payload probe dave-deps dave-host-test clean distclean hooks
 
 all: app
 
@@ -236,7 +236,27 @@ $(HOST_BINARY): $(HOST_SOURCES) $(JSON_OBJ) $(ZLIB_OBJECTS) $(ZLIB_FIXTURE_OBJEC
 	    $(ZLIB_FIXTURE_OBJECTS) $(CA_OBJ) $(OPENSSL_HOST)/lib/libssl.a \
 	    $(OPENSSL_HOST)/lib/libcrypto.a -o $@
 
-test: $(HOST_BINARY)
+# ---- the host snapshot binary (Mesa, in the container) --------------------
+# The PNG runner compiles the platform-neutral app plus the kit's PC shim, and
+# what that means lives here: the list used to sit in tools/host-snapshots.sh as
+# well, the two drifted, and the snapshot link failed on core/zlib_stream.cpp
+# without anything noticing until a session needed it. The script asks for this
+# list now, and `make test` links the binary without rendering it, so the next
+# drift turns the suite red.
+SNAPSHOT_SOURCES := $(shell find core ui/screens ui/kit platform/host \
+                       \( -name '*.cpp' -o -name '*.c' \) \
+                       ! -path 'ui/kit/platform/*' | sort) \
+                    ui/frame.cpp ui/screens.cpp \
+                    $(JSON_LIB)/yyjson.c \
+                    $(addprefix $(ZLIB_LIB)/,$(ZLIB_INFLATE))
+
+snapshot-sources: $(JSON_LIB)/yyjson.c $(ZLIB_LIB)/zlib.h
+	@printf '%s\n' $(SNAPSHOT_SOURCES)
+
+snapshot-link: snapshot-sources
+	@scripts/dev.sh bash tools/host-snapshots.sh --link-only
+
+test: $(HOST_BINARY) snapshot-link
 	@printf '%s\n' '==> [test] host unit tests'
 	@./$(HOST_BINARY)
 
