@@ -11,7 +11,12 @@
 
 #include "tests/micro_test.hpp"
 
+#include <arpa/inet.h>
 #include <cstdint>
+#include <netinet/in.h>
+#include <string_view>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include "daemon/src/server.hpp"
 
@@ -77,4 +82,36 @@ MICRO_TEST(a_dribbling_client_cannot_hold_the_read_loop)
     MICRO_CHECK_EQ(now, kBudget); // two seconds, not minutes
     MICRO_CHECK_EQ(waits, 4);     // four half-second steps
     MICRO_CHECK(budget.expired(now));
+}
+
+MICRO_TEST(a_port_that_is_already_taken_is_a_failure_and_not_a_listener)
+{
+    // The daemon leaves with a non-zero status when it cannot take its port, and
+    // that decision is only as good as this answer: a taken port has to come back
+    // as a failure with a reason, never as a server that thinks it is listening.
+    // The socket below stands in for the daemon that already has the port.
+    const int taken = ::socket(AF_INET, SOCK_STREAM, 0);
+    MICRO_CHECK(taken >= 0);
+
+    const int reuse = 1;
+    ::setsockopt(taken, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = 0;
+    MICRO_CHECK_EQ(::bind(taken, reinterpret_cast<sockaddr *>(&address), sizeof(address)), 0);
+    MICRO_CHECK_EQ(::listen(taken, 1), 0);
+
+    socklen_t length = sizeof(address);
+    MICRO_CHECK_EQ(::getsockname(taken, reinterpret_cast<sockaddr *>(&address), &length), 0);
+    const std::uint16_t port = ntohs(address.sin_port);
+    MICRO_CHECK(port != 0);
+
+    Server server;
+    MICRO_CHECK(!server.listen(port));
+    MICRO_CHECK(!server.is_listening());
+    MICRO_CHECK(server.last_error().find("bind") != std::string_view::npos);
+
+    ::close(taken);
 }

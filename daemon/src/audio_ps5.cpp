@@ -38,6 +38,11 @@ bool AudioOut::open_variant(const AudioVariant &variant) noexcept
         return false;
     }
 
+    // The port is open, so whatever an earlier variant failed with is history:
+    // /status describes this port from here on, and a stale code would report a
+    // daemon that is working as one that is broken.
+    error_.clear();
+
     volume_flags_.store(variant.volume_flags, std::memory_order_relaxed);
     volume_code_.store(0, std::memory_order_relaxed);
     if (variant.volume_flags != kNoVolumeCall)

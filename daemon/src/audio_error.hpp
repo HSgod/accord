@@ -39,6 +39,11 @@ class AudioError
     // Called from the audio thread. The last failure wins; there is no queue.
     void remember(AudioCall call, int code) noexcept;
 
+    // Called from the audio thread when a port opens: a failure from an earlier
+    // variant is history, and leaving it in /status reports a machine that is
+    // working as one that is broken.
+    void clear() noexcept;
+
     // Called from the HTTP thread: empty while nothing has failed. Composes the
     // text, so unlike the rest of this module it allocates.
     std::string text() const;

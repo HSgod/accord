@@ -44,6 +44,11 @@ void AudioError::remember(AudioCall call, int code) noexcept
     state_.store(packed, std::memory_order_relaxed);
 }
 
+void AudioError::clear() noexcept
+{
+    state_.store(0, std::memory_order_relaxed);
+}
+
 std::string AudioError::text() const
 {
     const std::uint64_t state = state_.load(std::memory_order_relaxed);

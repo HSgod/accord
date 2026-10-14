@@ -40,6 +40,23 @@ MICRO_TEST(the_record_names_the_call_and_the_code)
     MICRO_CHECK_EQ(error.text(), std::string{"sceAudioOutInit = 0x00000000"});
 }
 
+MICRO_TEST(a_port_that_opens_clears_the_failure_before_it)
+{
+    // The console session of 2026-10-12 left /status reporting 0x80260011 from a
+    // variant that had already been replaced by a working one. A successful open
+    // is what clears the record, and it has to be able to record again after.
+    AudioError error;
+
+    error.remember(AudioCall::open, static_cast<int>(0x80260011u));
+    MICRO_CHECK(!error.text().empty());
+
+    error.clear();
+    MICRO_CHECK(error.text().empty());
+
+    error.remember(AudioCall::set_volume, static_cast<int>(0x80260013u));
+    MICRO_CHECK_EQ(error.text(), std::string{"sceAudioOutSetVolume = 0x80260013"});
+}
+
 MICRO_TEST(a_reader_never_catches_half_a_failure)
 {
     // Two writers' worth of failures from one thread, read by another: every

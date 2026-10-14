@@ -219,16 +219,25 @@ int main(int argc, char **argv)
     if (dave.library_reported_failure)
         logf(LogLevel::warn, "dave: library reported '%s' while probing", dave.reported_reason);
 
+    // The HTTP port is how this payload is found and stopped, so a daemon that
+    // cannot take it leaves instead of running on: in the console session of
+    // 2026-10-12 a second start failed to bind, opened an audio port anyway and
+    // stayed alive with nothing able to reach it or stop it (pid 141). The exit
+    // happens before the audio thread exists, so such a process makes no sound.
+    Server server;
+    if (!server.listen(options.port))
+    {
+        logf(LogLevel::error, "listen failed: %s", std::string{server.last_error()}.c_str());
+        logf(LogLevel::warn, "exiting without a port: this payload could not be reached");
+        close_log();
+        return 2;
+    }
+    logf(LogLevel::info, "listening on 0.0.0.0:%u", static_cast<unsigned>(server.port()));
+
     // The port belongs to the audio thread, which opens the first variant of the
     // sweep before it plays a block. A variant whose open fails does not stop the
     // daemon: /status keeps answering and POST /variant asks for the next one.
     AudioOut audio;
-
-    Server server;
-    if (server.listen(options.port))
-        logf(LogLevel::info, "listening on 0.0.0.0:%u", static_cast<unsigned>(server.port()));
-    else
-        logf(LogLevel::error, "listen failed: %s", std::string{server.last_error()}.c_str());
 
     std::atomic<std::uint64_t> frames{0};
     std::atomic<bool> running{true};
