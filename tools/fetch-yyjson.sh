@@ -3,8 +3,8 @@
 #
 # The daemon and the title both parse Discord JSON, and core/json.cpp is built
 # by both, so the parser has to be a plain C library that returns errors rather
-# than throwing them: yyjson (MIT) is the choice, justified in
-# reports/task-3.2.md. This script fetches the tagged release below into
+# than throwing them: yyjson (MIT) is the choice, because it is one C file
+# with no dependencies. This script fetches the tagged release below into
 # third_party/yyjson and leaves only what is needed to build and to attribute:
 # src/yyjson.c, src/yyjson.h and the licence. It is a build input, so
 # third_party/yyjson is not committed.

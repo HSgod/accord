@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Accord - refuse commit messages that name the private work plan.
+#
+# The plan's step names (T2.2b, Phase 3, task-3.2, its report paths) mean
+# nothing to someone reading this public history, so a message says what
+# changed and why in plain words instead. Lines git strips (starting with #)
+# are not checked. Enabled per checkout by `make hooks`.
+#
+#   tools/git-hooks/commit-msg <message-file>
+
+set -euo pipefail
+
+message_file="$1"
+
+hits="$(perl -ne '
+    next if /^#/;
+    print "  $.: $_" if m{
+        (?<![A-Za-z0-9.])T[0-9]+\.[0-9]+[a-z]?(?:-[0-9]+)?(?![0-9])
+        | \btask-?[0-9]
+        | \breports/
+        | TASKS\.md
+        | \b(?:Faz[a-z\x{0119}]+|Phase)\s+[0-9]
+    }x
+' "$message_file")"
+
+if [ -n "$hits" ]; then
+    printf '%s\n' 'commit-msg: the message names the private work plan:' >&2
+    printf '%s\n' "$hits" >&2
+    printf '%s\n' 'Describe what changed and why in plain words instead.' >&2
+    exit 1
+fi

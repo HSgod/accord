@@ -196,9 +196,14 @@ APP_VARS := APP_SOURCE_DIR=.local/accord/src \
             APP_ASSETS=.local/accord/assets
 
 .PHONY: all app stage opengl ffpkg test ws-soak gateway-hello host-snapshots payload probe dave-deps \
-        dave-host-test clean distclean
+        dave-host-test clean distclean hooks
 
 all: app
+
+# Point git at the versioned hooks in tools/git-hooks. Once per checkout.
+hooks:
+	@git config core.hooksPath tools/git-hooks
+	@printf '%s\n' '==> [hooks] core.hooksPath = tools/git-hooks'
 
 stage: $(JSON_LIB)/yyjson.c $(ZLIB_LIB)/zlib.h
 	@LINK_TEST=$(LINK_TEST) bash tools/stage-ps5-sources.sh
