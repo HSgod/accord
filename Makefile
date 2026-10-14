@@ -185,8 +185,8 @@ APP_VARS := APP_SOURCE_DIR=.local/accord/src \
             'APP_WRAP_SYMBOLS=sceSystemServiceHideSplashScreen malloc calloc realloc free posix_memalign malloc_usable_size' \
             APP_ASSETS=.local/accord/assets
 
-.PHONY: all app stage opengl ffpkg ffpkg-media test ws-soak gateway-hello host-snapshots payload probe \
-        dave-deps dave-host-test clean distclean
+.PHONY: all app stage opengl ffpkg test ws-soak gateway-hello host-snapshots payload probe dave-deps \
+        dave-host-test clean distclean
 
 all: app
 
@@ -268,24 +268,6 @@ payload: $(JSON_LIB)/yyjson.c $(ZLIB_LIB)/zlib.h $(CACERT_LIB)/cacert.pem
 probe:
 	@printf '%s\n' '==> [probe] T2.3c path-A probe (elf) in the builder container'
 	@scripts/dev.sh bash tools/build-audio-probe.sh
-
-# T2.3d-2 step 3: the same tone build, registered as a Media app under its own
-# title id so it cannot overwrite the game-category PPSA99070. The harness reads
-# the identity from the staged param.json, so the media parameters are swapped in
-# after staging; a media title carries badge 2 and no gameIntent, which is the
-# only other pair the harness accepts.
-MEDIA_TITLE_ID := PPSA99071
-
-ffpkg-media: stage opengl
-	@printf '%s\n' '==> [ffpkg-media] Media-category tone title in the builder container'
-	@cp sce_sys/param-media.json $(STAGING)/sce_sys/param.json
-	@scripts/dev.sh make -C $(BOILERPLATE) ffpkg $(APP_VARS)
-	@test -f $(BOILERPLATE)/dist/$(MEDIA_TITLE_ID).ffpkg || { \
-	    printf '%s\n' '==> [ffpkg-media] no $(MEDIA_TITLE_ID).ffpkg: check sce_sys/param-media.json'; \
-	    exit 1; }
-	@mkdir -p dist
-	@cp -a $(BOILERPLATE)/dist/$(MEDIA_TITLE_ID).ffpkg dist/
-	@printf '%s\n' "==> [ffpkg-media] dist/$(MEDIA_TITLE_ID).ffpkg"
 
 # DAVE (T6.0-2). The dependency chain is fetched and cross-built into build/dave,
 # which is gitignored, so this runs once per checkout and `make payload` needs it.
