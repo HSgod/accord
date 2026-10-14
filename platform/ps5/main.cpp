@@ -209,12 +209,16 @@ void step_shell(Shell &shell, const hui::InputFrame &input)
 accord::ui::DaemonLinkResult g_link_result;
 #endif
 
-void draw_frame(Shell &shell, float seconds)
+// The renderer keeps the pointer to the list until present() plays the frame, so
+// the list has to outlive this call: a stack local here is a dangling pointer by
+// the time the frame is drawn, and the whole screen -- panels, tiles and words --
+// disappears behind the backdrop, which is the one layer the renderer copies.
+void draw_frame(Shell &shell, hui::gfx::DrawList &list, float seconds)
 {
+    list.clear();
     const accord::ui::Screen &screen = shell.screens[shell.nav.screen];
     const accord::ui::ScreenContext context{shell.fonts, shell.theme,
                                             shell.renderer.glass_texture(), seconds};
-    hui::gfx::DrawList list;
     screen.draw(list, context);
 
     if (shell.nav.typing)
@@ -391,6 +395,10 @@ int main()
     std::int64_t next_link_probe = start;
 #endif
 
+    // The frame's draw list lives here, not inside draw_frame: the renderer
+    // holds the pointer until present() replays the layers.
+    hui::gfx::DrawList frame_list;
+
     for (;;)
     {
         const std::int64_t now = hui::sys::monotonic_us();
@@ -463,7 +471,7 @@ int main()
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        draw_frame(shell, static_cast<float>(now - start) / 1e6f);
+        draw_frame(shell, frame_list, static_cast<float>(now - start) / 1e6f);
         renderer.present(0, display.width(), display.height());
 
         if (!display.swap())

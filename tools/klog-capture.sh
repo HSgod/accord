@@ -30,8 +30,15 @@ last_data_at=$(date +%s)
 while true; do
     printf '\n=== connect %s ===\n' "$(date +%H:%M:%S)" >> "$out"
 
+    # nc's own -w does not end an idle read on macOS: it sets a connect
+    # deadline and then waits forever, which is how the first version of this
+    # script collected nothing. The window is enforced from outside instead.
     chunk="$(mktemp)"
-    nc -w "$connection_timeout" "$host" "$port" > "$chunk" 2>/dev/null || true
+    nc "$host" "$port" > "$chunk" 2>/dev/null &
+    ncpid=$!
+    sleep "$connection_timeout"
+    kill "$ncpid" 2>/dev/null || true
+    wait "$ncpid" 2>/dev/null || true
     received="$(wc -c < "$chunk" | tr -d ' ')"
     if [ "$received" -gt 0 ]; then
         cat "$chunk" >> "$out"
