@@ -210,12 +210,16 @@ opengl:
 	@scripts/dev.sh bash tools/prepare-opengl.sh
 
 app: stage opengl
+	@bash tools/check-title-assets.sh $(STAGING)
 	@printf '%s\n' '==> [app] PS5 build in the builder container'
 	@scripts/dev.sh make -C $(BOILERPLATE) app $(APP_VARS)
+	@scripts/dev.sh bash tools/check-null-imports.sh
 
 ffpkg: stage opengl
+	@bash tools/check-title-assets.sh $(STAGING)
 	@printf '%s\n' '==> [ffpkg] PS5 build and UFS2 image'
 	@scripts/dev.sh make -C $(BOILERPLATE) ffpkg $(APP_VARS)
+	@scripts/dev.sh bash tools/check-null-imports.sh
 	@mkdir -p dist
 	@cp -a $(BOILERPLATE)/dist/$(TITLE_ID).ffpkg dist/
 	@printf '%s\n' "==> [ffpkg] dist/$(TITLE_ID).ffpkg"
