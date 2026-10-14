@@ -2,13 +2,13 @@
  * Accord - Test tone for the background daemon payload.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Three short beeps at 1000 Hz, then a pause: 150 ms of tone, 150 ms of silence,
- * three times, and the rest of the two-second cycle silent. The first version of
- * this tone was one second of 440 Hz at about -12 dBFS alternating with one
- * second of silence, which the console played into a port that reported itself
- * open and consumed every block while nothing could be heard. A signal nobody
- * can miss is worth more than a pleasant one while that question is open, so the
- * amplitude is close to full scale and the beeps are short enough to stand out.
+ * Eight seconds of a siren -- a 400 Hz to 2000 Hz sweep and back, one second
+ * each way -- then two seconds of silence, on repeat. Two earlier signals left
+ * room for doubt: one second of 440 Hz at about -12 dBFS, and three 150 ms beeps
+ * of 1000 Hz at about -0.8 dBFS, both of which played into a port that reported
+ * itself open and consumed every block. A sound nothing else on the console
+ * makes is what removes the doubt, and a sweep is what a game's own audio cannot
+ * be mistaken for.
  *
  * Pure arithmetic, so the host tests exercise exactly what the console plays.
  */
@@ -23,18 +23,22 @@ namespace accord::daemon
 {
 // Interleaved signed 16-bit stereo: one frame is two samples.
 inline constexpr std::uint32_t kSampleRate = 48000;
-inline constexpr double kBeepFrequencyHz = 1000.0;
-inline constexpr std::int16_t kBeepAmplitude = 30000;                    // about -0.8 dBFS
-inline constexpr std::uint64_t kBeepFrames = kSampleRate / 1000 * 150;   // 150 ms of tone
-inline constexpr std::uint64_t kBeepGapFrames = kSampleRate / 1000 * 150; // 150 ms of silence
-inline constexpr unsigned kBeepsPerCycle = 3;
-inline constexpr std::uint64_t kBeepPeriodFrames = kBeepFrames + kBeepGapFrames;
-inline constexpr std::uint64_t kBeepsFrames = kBeepsPerCycle * kBeepPeriodFrames;
-inline constexpr std::uint64_t kCycleFrames = 2 * kSampleRate;
+inline constexpr double kSweepLowHz = 400.0;
+inline constexpr double kSweepHighHz = 2000.0;
+inline constexpr std::int16_t kSirenAmplitude = 30000;              // about -0.8 dBFS
+inline constexpr std::uint64_t kSweepHalfFrames = kSampleRate;      // one second each way
+inline constexpr std::uint64_t kSweepFrames = 2 * kSweepHalfFrames; // up, then down
+inline constexpr std::uint64_t kSirenFrames = 8 * kSampleRate;      // eight seconds of it
+inline constexpr std::uint64_t kSirenPauseFrames = 2 * kSampleRate; // then two seconds off
+inline constexpr std::uint64_t kCycleFrames = kSirenFrames + kSirenPauseFrames;
 
-// Whether the tone sounds at `frames` of the two-second cycle. Free function, so
+// Whether the siren sounds at `frames` of the ten-second cycle. Free function, so
 // a status read never has to touch the generator the audio path owns.
 bool tone_playing_at(std::uint64_t frames) noexcept;
+
+// The frequency the sweep is at, `position` frames into the siren. Exposed so the
+// tests can check the sweep by its frequency rather than by counting samples.
+double siren_frequency_at(std::uint64_t position) noexcept;
 
 class Tone
 {
