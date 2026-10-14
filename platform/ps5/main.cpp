@@ -47,6 +47,12 @@
 extern "C" int sceAudioOutGetPortState(int handle, void *state);
 #endif
 
+// T2.2b: the title-to-daemon link probe. Only a build with LINK_TEST=1 carries
+// it, so an ordinary title opens no sockets at all.
+#ifdef ACCORD_LINK_TEST
+#include "platform/ps5/daemon_link.hpp"
+#endif
+
 #include <GL/glcorearb.h>
 
 #include <cstddef>
@@ -87,6 +93,10 @@ bool load_font(hui::gfx::Renderer &renderer, const char *file, hui::gfx::Font *f
     if (!hui::save::read_file(path, &data) || !font->load(data))
     {
         log(LogLevel::error, std::string("font failed: ") + path + ": " + font->error());
+        // The console run cannot see stdout, and a title with no fonts draws no
+        // words at all -- which looks like a rendering bug, not a missing file.
+        // So the failure goes to klog too, with the path it tried.
+        hui::sys::log("[accord] font failed: %s: %s", path.c_str(), font->error().c_str());
         return false;
     }
     ref->font = font;
@@ -193,6 +203,12 @@ void step_shell(Shell &shell, const hui::InputFrame &input)
     }
 }
 
+#ifdef ACCORD_LINK_TEST
+// The loop probes and the frame reads the last answer. One file, one reader, so
+// a plain global says it best.
+accord::ui::DaemonLinkResult g_link_result;
+#endif
+
 void draw_frame(Shell &shell, float seconds)
 {
     const accord::ui::Screen &screen = shell.screens[shell.nav.screen];
@@ -209,6 +225,21 @@ void draw_frame(Shell &shell, float seconds)
         hui::ui::Canvas canvas{list, shell.fonts, shell.renderer.glass_texture(), seconds};
         shell.keyboard.draw(canvas);
     }
+
+#ifdef ACCORD_LINK_TEST
+    {
+        // Over whatever the screen drew, and well above the edge: a television
+        // crops the outermost band, so a line pinned to the bottom corner is a
+        // line nobody sees. A panel behind it carries it on any screen.
+        const std::string line = accord::ui::format_daemon_link_line(g_link_result);
+        hui::ui::Painter paint(list, shell.fonts, shell.theme, shell.renderer.glass_texture());
+        const float width = paint.body_width(line, 28.0f) + 56.0f;
+        list.rounded_rect({32.0f, 904.0f, 32.0f + width, 976.0f}, 14.0f,
+                          hui::gfx::Color::rgb(0x05060d, 0.78f));
+        paint.body(line, 60.0f, 950.0f, 28.0f,
+                   g_link_result.answered ? shell.theme.text : shell.theme.text_muted);
+    }
+#endif
 
     hui::gfx::BackdropSpec backdrop = shell.theme.backdrop;
     backdrop.time = seconds;
@@ -242,6 +273,26 @@ int main()
 
     hui::gfx::Renderer renderer;
     hui::gfx::Font regular;
+#ifdef ACCORD_LINK_TEST
+    // T2.2b: a title whose fonts do not load draws panels and no words, and from
+    // outside that looks like a rendering bug. This reads one font through every
+    // root that could be the app's own and says in klog which one answers.
+    {
+        const char *candidates[] = {
+            "assets/fonts/inter-regular.huifont",
+            "/app0/assets/fonts/inter-regular.huifont",
+            "/system_ex/app/PPSA99070/assets/fonts/inter-regular.huifont",
+            "fonts/inter-regular.huifont",
+        };
+        for (const char *candidate : candidates)
+        {
+            std::string probe;
+            const bool ok = hui::save::read_file(candidate, &probe);
+            hui::sys::log("[accord] asset probe: %s -> %s (%zu B)", candidate, ok ? "ok" : "missing",
+                          probe.size());
+        }
+    }
+#endif
     hui::gfx::Font semibold;
     hui::gfx::Font display_font;
     hui::gfx::Font mono;
@@ -334,6 +385,12 @@ int main()
     std::int64_t next_heartbeat = start + 1000000;
 #endif
 
+#ifdef ACCORD_LINK_TEST
+    // T2.2b: the first frame asks, then every five seconds, so a daemon that
+    // comes up late is still caught and the klog shows the pattern.
+    std::int64_t next_link_probe = start;
+#endif
+
     for (;;)
     {
         const std::int64_t now = hui::sys::monotonic_us();
@@ -379,6 +436,19 @@ int main()
             hui::sys::log("[accord] title heartbeat t=%.1fs",
                           static_cast<double>(now - start) / 1e6);
             next_heartbeat = now + 1000000;
+        }
+#endif
+
+#ifdef ACCORD_LINK_TEST
+        // T2.2b: the title asks the daemon for /status and reports what came
+        // back -- in klog for the report, on screen for the person holding the
+        // pad. The probe has its own budget, so a missing daemon costs the frame
+        // that timeout and nothing more.
+        if (now >= next_link_probe)
+        {
+            g_link_result = accord::ps5::probe_daemon_link(2000);
+            hui::sys::log("[accord] %s", accord::ui::format_daemon_link_line(g_link_result).c_str());
+            next_link_probe = now + 5000000;
         }
 #endif
 

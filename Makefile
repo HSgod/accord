@@ -39,7 +39,7 @@ CXXFLAGS ?= -std=c++20 -O2 -Wall -Wextra -Wpedantic
 HOST_SOURCES := $(shell find core platform/host platform/net daemon tests -name '*.cpp' \
                    ! -path 'tests/live/*' \
                    ! -name 'snapshot_main.cpp' ! -name 'main.cpp' ! -name 'audio_ps5.cpp' | sort) \
-                ui/nav.cpp ui/title_tone.cpp
+                ui/daemon_link.cpp ui/nav.cpp ui/title_tone.cpp
 HOST_BINARY  := build/host-tests
 
 # The gateway tool of T3.4 is the other side of the same line: it is a host
@@ -173,6 +173,16 @@ ifeq ($(TITLE_TONE),1)
 APP_DEFS += ACCORD_TITLE_TONE=1
 endif
 
+# T2.2b: the title-to-daemon link probe. The title is the daemon's front end in
+# the fallback variant of T2.3c, which sends PCM and a heartbeat over 127.0.0.1,
+# so a build with LINK_TEST=1 asks the daemon's /status every few seconds, shows
+# the answer on screen and writes it to klog. Off by default, so an ordinary
+# build carries none of it.
+LINK_TEST ?= 0
+ifeq ($(LINK_TEST),1)
+APP_DEFS += ACCORD_LINK_TEST=1
+endif
+
 # --wrap is what routes the process's allocations into the arena
 # platform/ps5/app_heap.c keeps (and the splash hold in opengl_runtime_shims.c
 # needs its own wrap). The harness links the wrappers only because the symbols
@@ -191,7 +201,7 @@ APP_VARS := APP_SOURCE_DIR=.local/accord/src \
 all: app
 
 stage: $(JSON_LIB)/yyjson.c $(ZLIB_LIB)/zlib.h
-	@bash tools/stage-ps5-sources.sh
+	@LINK_TEST=$(LINK_TEST) bash tools/stage-ps5-sources.sh
 
 # Inside the container: the payload SDK it copies the AGC stubs into, and the
 # clang-18 it takes the builtins from, are the container's.

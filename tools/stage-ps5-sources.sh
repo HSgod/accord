@@ -2,7 +2,7 @@
 # Accord - stage this project's PS5 sources into the boilerplate harness.
 #
 # The boilerplate builds from a single source directory, while our code lives in
-# core/, platform/ps5/ and ui/. Those three are copied into its gitignored
+# core/, platform/ps5/ and ui/. Those are copied into its gitignored
 # .local/ tree, mirroring the layout so that root-relative includes such as
 # "core/log.hpp" keep working.
 #
@@ -30,10 +30,30 @@ mkdir -p -- "$staging/src" "$staging/sce_sys" "$staging/assets"
 cp -a -- "$root/core" "$staging/src/core"
 mkdir -p -- "$staging/src/platform"
 cp -a -- "$root/platform/ps5" "$staging/src/platform/ps5"
+# T2.2b: the title-to-daemon link probe is a test build's business. Without
+# LINK_TEST=1 its module is not staged, so an ordinary build carries none of
+# the socket code either.
+if [ "${LINK_TEST:-0}" != "1" ]; then
+    rm -f -- "$staging/src/platform/ps5/daemon_link.hpp" \
+        "$staging/src/platform/ps5/daemon_link.cpp"
+fi
 cp -a -- "$root/ui" "$staging/src/ui"
 rm -rf -- "$staging/src/platform/ps5/dave" "$staging/src/ui/kit/host"
 
 cp -a -- "$root/sce_sys/param.json" "$staging/sce_sys/param.json"
+
+# Every word the title draws comes from the kit's precompiled fonts, which the
+# title reads from /app0/assets/fonts. The kit keeps them in its own tree, so the
+# image has to carry them or a console run shows panels and no text at all -- the
+# host snapshots never noticed, because they read the kit's directory directly.
+kit_assets="$root/third_party/ps5-homebrew-ui/assets"
+if [ ! -d "$kit_assets" ]; then
+    printf '%s\n' "==> [stage] missing $kit_assets (the kit's fonts and cues)" >&2
+    printf '%s\n' "    check out third_party/ps5-homebrew-ui first" >&2
+    exit 1
+fi
+mkdir -p -- "$staging/assets"
+cp -a -- "$kit_assets/." "$staging/assets/"
 
 # core/json.cpp reads the pinned parser as "third_party/yyjson/yyjson.h", which
 # is the path the host tests and the daemon resolve from the repository root.
