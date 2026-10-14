@@ -35,6 +35,14 @@
 #include "ui/nav.hpp"
 #include "ui/screens.hpp"
 
+// T2.3b: the control run. Only a build with TITLE_TONE=1 carries the tone and
+// the two kit headers that play it; an ordinary build has neither.
+#ifdef ACCORD_TITLE_TONE
+#include "ui/kit/audio/mixer.hpp"
+#include "ui/kit/platform/ps5/audio_out.hpp"
+#include "ui/title_tone.hpp"
+#endif
+
 #include <GL/glcorearb.h>
 
 #include <cstddef>
@@ -269,6 +277,21 @@ int main()
     std::int64_t previous = start;
     hui::PadSample samples[64];
     std::uint64_t frames = 0;
+
+#ifdef ACCORD_TITLE_TONE
+    // T2.3b: the same sweep the daemon plays, through the kit's own mixer and
+    // port, from a process that has an application id. Everything else about
+    // this build is the ordinary title, so what the console test compares is
+    // whose process opened the port and nothing else.
+    hui::audio::Mixer title_mixer;
+    hui::ps5::AudioOut title_audio;
+    double tone_posted_at = -accord::ui::kTitleTonePeriodSeconds;
+    if (title_audio.start(title_mixer))
+        log(LogLevel::info, "title tone: on, a 400 Hz to 2000 Hz sweep every 1.4 s");
+    else
+        log(LogLevel::error, "title tone: the audio port did not open");
+#endif
+
     for (;;)
     {
         const std::int64_t now = hui::sys::monotonic_us();
@@ -276,6 +299,26 @@ int main()
         previous = now;
         if (dt > 0.05f)
             dt = 0.05f; // a hitch must not teleport the animations
+
+#ifdef ACCORD_TITLE_TONE
+        const double tone_seconds = static_cast<double>(now - start) / 1e6;
+        if (accord::ui::title_tone_due(tone_seconds, tone_posted_at))
+        {
+            hui::audio::Tone sweep;
+            sweep.wave = hui::audio::Wave::sine;
+            sweep.start_hz = accord::ui::kTitleToneStartHz;
+            sweep.end_hz = accord::ui::kTitleToneEndHz;
+            sweep.seconds = static_cast<float>(accord::ui::kTitleToneSweepSeconds);
+            sweep.attack = accord::ui::kTitleToneAttackSeconds;
+            sweep.release = accord::ui::kTitleToneReleaseSeconds;
+
+            hui::audio::PlayParams params;
+            params.gain = accord::ui::kTitleToneGain;
+            params.bus = hui::audio::Bus::sfx;
+            title_mixer.play_tone(sweep, params);
+            tone_posted_at = tone_seconds;
+        }
+#endif
 
         const std::size_t count = pad.read(samples);
         const hui::InputFrame input =

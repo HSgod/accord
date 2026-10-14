@@ -39,7 +39,7 @@ CXXFLAGS ?= -std=c++20 -O2 -Wall -Wextra -Wpedantic
 HOST_SOURCES := $(shell find core platform/host platform/net daemon tests -name '*.cpp' \
                    ! -path 'tests/live/*' \
                    ! -name 'snapshot_main.cpp' ! -name 'main.cpp' ! -name 'audio_ps5.cpp' | sort) \
-                ui/nav.cpp
+                ui/nav.cpp ui/title_tone.cpp
 HOST_BINARY  := build/host-tests
 
 # The gateway tool of T3.4 is the other side of the same line: it is a host
@@ -163,6 +163,16 @@ STAGING     := $(BOILERPLATE)/.local/accord
 # its own root, which is the parent of both our tree and the SDK.
 OPENGLS := third_party/ps5-opengl
 
+# T2.3b: the one exception to "the title opens no audio ports". With TITLE_TONE=1
+# the title plays a test tone from the control run, which is what tells an
+# application's audio from a payload's; off by default, so an ordinary build
+# carries none of it. `make ffpkg TITLE_TONE=1` is the whole recipe.
+TITLE_TONE ?= 0
+APP_DEFS   := GL_GLEXT_PROTOTYPES=1
+ifeq ($(TITLE_TONE),1)
+APP_DEFS += ACCORD_TITLE_TONE=1
+endif
+
 # --wrap is what routes the process's allocations into the arena
 # platform/ps5/app_heap.c keeps (and the splash hold in opengl_runtime_shims.c
 # needs its own wrap). The harness links the wrappers only because the symbols
@@ -170,7 +180,7 @@ OPENGLS := third_party/ps5-opengl
 APP_VARS := APP_SOURCE_DIR=.local/accord/src \
             APP_PARAM=.local/accord/sce_sys/param.json \
             'APP_INCLUDE_PATHS=../ps5-opengl/sdk/include .local/accord/src' \
-            APP_DEFINITIONS=GL_GLEXT_PROTOTYPES=1 \
+            'APP_DEFINITIONS=$(APP_DEFS)' \
             APP_STATIC_ARCHIVES=../ps5-opengl/libps5opengl-group.a \
             'APP_WRAP_SYMBOLS=sceSystemServiceHideSplashScreen malloc calloc realloc free posix_memalign malloc_usable_size' \
             APP_ASSETS=.local/accord/assets
